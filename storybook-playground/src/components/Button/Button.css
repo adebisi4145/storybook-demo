@@ -42,6 +42,9 @@
   gap: var(--btn-gap);
   box-sizing: border-box;
   min-block-size: var(--btn-height);
+  /* Never outgrow the container -- this is what lets the label truncate
+     instead of the button overflowing. */
+  max-inline-size: 100%;
   padding: var(--btn-pad-block) var(--btn-pad-inline);
   border: 0;
   border-radius: var(--btn-radius);
@@ -166,8 +169,14 @@
  * unavailable -- it keeps its variant colours (so the spinner inherits the
  * right currentColor) and only loses its interactive affordance.
  */
+/*
+ * Blocks every pointer event at once (mousedown / pointerdown / mouseup),
+ * not just the click the React handler guards. Keyboard activation is still
+ * guarded in onClick, and focus is deliberately retained.
+ * Trade-off: `cursor` cannot render on a pointer-events:none element.
+ */
 .btn[aria-disabled='true'] {
-  cursor: progress;
+  pointer-events: none;
 }
 
 /* --- modifiers ---------------------------------------------------------- */
@@ -201,6 +210,18 @@
   block-size: 100%;
 }
 
+/*
+ * Labels are single-line and truncate. Without this a long label wraps and
+ * breaks the pill, or stretches the control unbounded; truncation is the
+ * explicit choice rather than undefined behaviour.
+ */
+.btn__label {
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* --- loading ------------------------------------------------------------ */
 /*
  * Per the design sheet, a loading button collapses to a circle showing only
@@ -213,8 +234,22 @@
   inline-size: var(--btn-height);
 }
 
+/*
+ * Visually hidden rather than `display: none`. Removing the subtree would
+ * take the label out of the accessibility tree, collapsing the button's
+ * accessible name to just "Loading" -- a screen-reader user would lose all
+ * sense of which action is in flight. Absolute positioning still takes it
+ * out of flow, so the control collapses to a circle as the design specifies.
+ * `display` must be overridden too: `display: contents` cannot be positioned.
+ */
 .btn--loading .btn__content {
-  display: none;
+  position: absolute;
+  display: block;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .btn__spinner {

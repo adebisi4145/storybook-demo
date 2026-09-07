@@ -17,6 +17,7 @@ Start at **Components/Button → Brands (default / Dispatch)**. That single stor
 Other scripts:
 
 ```bash
+npm test                 # 22 story tests in headless Chromium
 npm run dev              # the host Vite app
 npm run build            # tsc -b && vite build
 npm run build-storybook  # static Storybook into storybook-static/
@@ -85,6 +86,21 @@ These are the choices a reviewer should push back on, with the reasoning:
 
 **Self-hosted font.** Work Sans via `@fontsource-variable/work-sans` rather than Google Fonts, so story snapshots render identically offline and in CI.
 
+**`loading` hides the label visually, never from assistive tech.** Collapsing the button to a circle is tempting to implement with `display: none` — which removes the label from the accessibility tree and reduces the accessible name to just "Loading", so a screen-reader user can no longer tell which action is in flight. The content is clipped out of flow instead: the name stays `"Button Loading"`. There is a regression test for exactly this.
+
+## Testing
+
+`npm test` runs every story as a test in headless Chromium via `@storybook/addon-vitest`, with axe assertions on each. **22 tests, all passing.** The `play` functions cover behaviour a screenshot can't show:
+
+- click fires `onClick`; **`disabled`** and **`loading`** both suppress it
+- **keyboard**: `Tab` focuses, `:focus-visible` matches, `Enter` activates
+- **`loading` keeps focus** (`aria-disabled`, not `disabled`) and sets `aria-busy`
+- **`loading` retains its accessible name** — the regression test described above
+- **icon-only** buttons expose an accessible name
+- **long labels** truncate on one line instead of wrapping and breaking the pill
+
+Verified separately against the browser: real mouse input on a loading button reaches none of `pointerdown` / `mousedown` / `mouseup` / `click`, while a resting button receives all four.
+
 ## Design fidelity
 
 Every value was read from the Figma inspector, not eyeballed. Verified programmatically across all 36 buttons — **0 mismatches**:
@@ -109,17 +125,21 @@ Verified behaviourally, not just visually: keyboard focus shows a ring while mou
 
 ### ⚠️ Known defect: the Dispatch green fails WCAG AA
 
-| brand | contrast on white | required | |
+| pairing | contrast | required | |
 | --- | --- | --- | --- |
-| Default `#2052AA` | 7.37:1 | 4.5:1 | pass |
-| Dispatch `#008E65` | **4.15:1** | 4.5:1 | **fail** |
+| Default `#2052AA` on white | 7.37:1 | 4.5:1 | pass |
+| Dispatch `#008E65` on white | **4.15:1** | 4.5:1 | **fail** |
+| Dispatch `#33A584` on `#E6F4F0` (hover / clicked) | **2.70:1** | 4.5:1 | **fail** |
 
-This affects all three variants. 14px Bold does not qualify as WCAG "large text" (that needs 18.66px bold), so the full 4.5:1 applies. **This is reproduced from Figma, not introduced here** — the implementation matches the design exactly. Darkening `green-500` to roughly `#00875F` would clear the threshold with a barely perceptible shift, but that's a decision for whoever owns the green ramp.
+This affects all three variants. 14px Bold does not qualify as WCAG "large text" (that needs 18.66px bold), so the full 4.5:1 applies. **This is reproduced from Figma, not introduced here** — the implementation matches the design exactly. Darkening `green-500` to roughly `#00875F` clears the threshold on white with a barely perceptible shift; the hover pairing needs re-specifying separately. Both are decisions for whoever owns the green ramp.
+
+The `Brands` story — the only one rendering Dispatch — carries a **scoped, commented waiver** disabling just the `color-contrast` rule, so the suite is green rather than permanently red. Every other axe rule still runs there, and `color-contrast` still runs on every other story, so a regression in the default brand will still fail the build. The waiver is written to be deleted the moment the ramp is fixed.
 
 Separately, the disabled states are far below contrast in both brands (white on `#D7D7D7` ≈ 1.35:1). axe does not flag these because it skips disabled controls, so the automated gate will never catch them.
 
 ## Deliberately not done
 
-- **Interaction tests.** `@storybook/addon-vitest` and Playwright are installed and `vite.config.ts` defines the browser-mode project, but there is no `.storybook/vitest.setup.ts` and no `test` script. Until that exists, `a11y.test: 'error'` gates nothing in CI — it only reports in the Storybook UI. This is the first thing to add for a real adoption.
 - **Other components.** Scope was one component by design.
+- **Forced pseudo-states use a CSS hook rather than `@storybook/addon-pseudo-states`.** The `data-force-state` attribute ships in production CSS for a test-only purpose. The addon is a devDependency with no runtime cost and would be the better choice; this is the decision in here I'd defend least.
+- **Dark mode values are invented.** `tokens.css` carries a `prefers-color-scheme: dark` block whose hexes were derived, not designed. Treat as placeholder until the design system defines dark mode.
 - **Chromatic.** `@chromatic-com/storybook` is installed but no project token is configured. The `Brands` matrix story is built to be the snapshot target when it is.

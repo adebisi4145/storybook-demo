@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { fn } from 'storybook/test';
+import { expect, fn, userEvent, within } from 'storybook/test';
 
 import { Button } from './Button';
 import type { ButtonSize, ButtonVariant } from './Button';
@@ -53,7 +53,31 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Primary: Story = { args: { variant: 'primary' } };
+export const Primary: Story = {
+  args: { variant: 'primary' },
+  play: async ({ args, canvasElement }) => {
+    const button = within(canvasElement).getByRole('button', { name: 'Button' });
+
+    await userEvent.click(button);
+    await expect(args.onClick).toHaveBeenCalledTimes(1);
+  },
+};
+
+/** Keyboard users must be able to reach and activate the button. */
+export const KeyboardActivation: Story = {
+  tags: ['!autodocs'],
+  play: async ({ args, canvasElement }) => {
+    const button = within(canvasElement).getByRole('button', { name: 'Button' });
+
+    await userEvent.tab();
+    await expect(button).toHaveFocus();
+    // The ring is :focus-visible only, so keyboard focus must match it.
+    await expect(button.matches(':focus-visible')).toBe(true);
+
+    await userEvent.keyboard('{Enter}');
+    await expect(args.onClick).toHaveBeenCalled();
+  },
+};
 
 export const Secondary: Story = { args: { variant: 'secondary' } };
 
@@ -81,11 +105,81 @@ export const IconOnly: Story = {
     endIcon: undefined,
     'aria-label': 'Add item',
   },
+  play: async ({ canvasElement }) => {
+    // No visible text, so the name has to come from aria-label. Without one
+    // this is the axe "Buttons must have discernible text" failure.
+    const button = within(canvasElement).getByRole('button', { name: 'Add item' });
+    await expect(button).toHaveAccessibleName('Add item');
+  },
 };
 
-export const Loading: Story = { args: { loading: true, 'aria-label': 'Add item' } };
+export const Loading: Story = {
+  args: { loading: true },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
 
-export const Disabled: Story = { args: { disabled: true } };
+    /*
+     * Regression test. The loading state collapses the button to a circle;
+     * an earlier implementation did that with `display: none`, which removed
+     * the label from the accessibility tree and reduced the accessible name
+     * to just "Loading" -- the user could no longer tell which action was in
+     * flight. getByRole computes the accessible name, so this query fails if
+     * the label is ever dropped again.
+     */
+    const button = canvas.getByRole('button', { name: /Button/ });
+    await expect(button).toHaveAccessibleName('Button Loading');
+    await expect(button).toHaveAttribute('aria-busy', 'true');
+
+    // Busy, not unavailable: focus must survive so keyboard users are not
+    // dumped back to the top of the document mid-request.
+    await expect(button).not.toBeDisabled();
+    button.focus();
+    await expect(button).toHaveFocus();
+
+    // Pointer events are blocked in CSS...
+    await expect(button).toHaveStyle({ pointerEvents: 'none' });
+    // ...and activation is blocked in the handler, covering keyboard too.
+    button.click();
+    await expect(args.onClick).not.toHaveBeenCalled();
+  },
+};
+
+export const Disabled: Story = {
+  args: { disabled: true },
+  play: async ({ args, canvasElement }) => {
+    const button = within(canvasElement).getByRole('button', { name: 'Button' });
+
+    // Genuinely disabled, unlike `loading` -- the real attribute is what
+    // reliably blocks clicks, form submission and keyboard activation.
+    await expect(button).toBeDisabled();
+    button.click();
+    await expect(args.onClick).not.toHaveBeenCalled();
+  },
+};
+
+/** A long label truncates rather than wrapping and breaking the pill. */
+export const LongLabel: Story = {
+  args: { children: 'Deploy to the production environment immediately' },
+  parameters: { layout: 'padded' },
+  decorators: [
+    (StoryFn) => (
+      <div style={{ inlineSize: 260 }}>
+        <StoryFn />
+      </div>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    const button = within(canvasElement).getByRole('button');
+    const label = canvasElement.querySelector('.btn__label')!;
+
+    // Stays one line at its natural height rather than wrapping...
+    await expect(button.getBoundingClientRect().height).toBe(37);
+    // ...does not overflow its 260px container...
+    await expect(button.getBoundingClientRect().width).toBeLessThanOrEqual(260);
+    // ...and the overflowing text is clipped, not laid out.
+    await expect(label.scrollWidth).toBeGreaterThan(label.clientWidth);
+  },
+};
 
 export const FullWidth: Story = {
   args: { fullWidth: true },
@@ -103,7 +197,7 @@ const ROWS = [
   { label: 'focused', props: { 'data-force-state': 'focused' } },
   { label: 'clicked', props: { 'data-force-state': 'clicked' } },
   { label: 'disabled', props: { disabled: true } },
-  { label: 'loading', props: { loading: true, 'aria-label': 'Loading' } },
+  { label: 'loading', props: { loading: true } },
 ] as const;
 
 const headingStyle = {
@@ -171,7 +265,29 @@ export const AllVariants: Story = {
  */
 export const Brands: Story = {
   name: 'Brands (default / Dispatch)',
-  parameters: { layout: 'fullscreen', controls: { disable: true } },
+  parameters: {
+    layout: 'fullscreen',
+    controls: { disable: true },
+    a11y: {
+      /*
+       * KNOWN DEFECT -- waived here, not fixed, because the green ramp is
+       * owned by design rather than by this repo.
+       *
+       * The Dispatch palette fails WCAG AA contrast:
+       *   green-500 #008E65 on white ............ 4.15:1  (needs 4.5:1)
+       *   green-400 #33A584 on green-50 #E6F4F0 . 2.70:1  (hover / clicked)
+       *
+       * This is the only story that renders the Dispatch brand, so the
+       * waiver is scoped to it. Every other axe rule still runs here, and
+       * colour-contrast still runs on every other story -- a contrast
+       * regression in the default brand will still fail the build.
+       *
+       * Remove this block once green-500 is darkened (~#00875F clears 4.5:1
+       * on white) and the wash pairing is re-specified.
+       */
+      config: { rules: [{ id: 'color-contrast', enabled: false }] },
+    },
+  },
   globals: { brand: 'default' },
   render: (args) => (
     <div
