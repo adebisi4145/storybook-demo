@@ -1,0 +1,250 @@
+/**
+ * Button.
+ *
+ * `.btn` declares every `--btn-*` variable and is the only place that reads
+ * them. Variant and size classes do nothing but re-point those variables, so
+ * the full state matrix falls out of ~10 declarations rather than one ruleset
+ * per combination.
+ *
+ * Geometry comes from the Figma sheet: radius 32px and 20px inline padding on
+ * every variant and size; only the block padding changes between sm and lg
+ * (8px vs 12px), giving 37px and 45px tall controls.
+ */
+
+.btn {
+  /* colour */
+  --btn-bg: transparent;
+  --btn-bg-hover: transparent;
+  --btn-bg-active: transparent;
+  /* Defaults to the resting fill: primary keeps blue-500 when focused, while
+     secondary and ghost pick up the wash. */
+  --btn-bg-focus: var(--btn-bg);
+  --btn-fg: var(--color-on-surface);
+  --btn-fg-hover: var(--btn-fg);
+  --btn-border-color: transparent;
+  --btn-border-color-hover: var(--btn-border-color);
+  --btn-border-width: 0px;
+
+  /* geometry -- shared by every size */
+  --btn-radius: var(--radius-pill);
+  --btn-pad-inline: var(--space-5);
+  --btn-gap: var(--space-2);
+  --btn-icon-size: 20px;
+
+  /* geometry -- set per size */
+  --btn-pad-block: var(--space-2);
+  --btn-height: 37px;
+
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--btn-gap);
+  box-sizing: border-box;
+  min-block-size: var(--btn-height);
+  padding: var(--btn-pad-block) var(--btn-pad-inline);
+  border: 0;
+  border-radius: var(--btn-radius);
+  background-color: var(--btn-bg);
+  color: var(--btn-fg);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-md);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  /*
+   * An inset shadow rather than `border`, so the stroke is drawn inside the
+   * box the way a Figma frame stroke is. That keeps bordered and borderless
+   * variants exactly the same height (37 / 45px) instead of the bordered one
+   * growing by 2px.
+   */
+  box-shadow: inset 0 0 0 var(--btn-border-width) var(--btn-border-color);
+  transition:
+    background-color var(--duration-fast) var(--easing-standard),
+    box-shadow var(--duration-fast) var(--easing-standard),
+    color var(--duration-fast) var(--easing-standard);
+}
+
+/* --- variants ----------------------------------------------------------- */
+
+.btn--primary {
+  --btn-bg: var(--color-accent);
+  --btn-bg-hover: var(--color-accent-hover);
+  --btn-bg-active: var(--color-accent-hover);
+  --btn-fg: var(--color-white);
+}
+
+.btn--secondary {
+  --btn-bg: var(--color-surface);
+  --btn-bg-hover: var(--color-accent-wash);
+  --btn-bg-active: var(--color-accent-wash);
+  --btn-bg-focus: var(--color-accent-wash);
+  --btn-fg: var(--color-accent);
+  --btn-fg-hover: var(--color-accent-hover);
+  --btn-border-color: var(--color-accent);
+  --btn-border-color-hover: var(--color-accent-hover);
+  --btn-border-width: 1px;
+}
+
+.btn--ghost {
+  --btn-bg-hover: var(--color-accent-wash);
+  --btn-bg-active: var(--color-accent-wash);
+  --btn-bg-focus: var(--color-accent-wash);
+  --btn-fg: var(--color-accent);
+  --btn-fg-hover: var(--color-accent-hover);
+}
+
+/* --- sizes -------------------------------------------------------------- */
+/* Only the block padding differs; inline padding, gap, radius, type scale
+   and icon size are shared. */
+
+.btn--sm {
+  --btn-pad-block: var(--space-2);
+  --btn-height: 37px;
+}
+
+.btn--lg {
+  --btn-pad-block: var(--space-3);
+  --btn-height: 45px;
+}
+
+/* --- states ------------------------------------------------------------- */
+/*
+ * `:where()` contributes no specificity, so these stay at (0,1,0) and the
+ * `data-force-state` hook is free. That attribute exists so static stories
+ * (and Chromatic) can capture hover / focused / clicked, which cannot be
+ * triggered by args -- it is a visual-testing affordance, not public API.
+ * Its values match the Figma `state` property names.
+ */
+
+.btn:where(:hover, [data-force-state='hover']):not(:disabled):not(
+    [aria-disabled='true']
+  ) {
+  background-color: var(--btn-bg-hover);
+  color: var(--btn-fg-hover);
+  box-shadow: inset 0 0 0 var(--btn-border-width) var(--btn-border-color-hover);
+}
+
+/* Figma's `clicked`. */
+.btn:where(:active, [data-force-state='clicked']):not(:disabled):not(
+    [aria-disabled='true']
+  ) {
+  background-color: var(--btn-bg-active);
+  color: var(--btn-fg-hover);
+  box-shadow: inset 0 0 0 var(--btn-border-width) var(--btn-border-color-hover);
+}
+
+/* Figma's `focused`. `outline` with an offset follows the 32px radius, which a
+   box-shadow ring would fight with the inset border shadow above. */
+.btn:where(:focus-visible, [data-force-state='focused']) {
+  background-color: var(--btn-bg-focus);
+  outline: var(--focus-ring-width) solid var(--color-focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* Custom properties re-resolve per element, so re-pointing them here restyles
+   background, text and stroke in one go. */
+.btn:disabled {
+  --btn-bg: var(--color-disabled-bg);
+  --btn-fg: var(--color-white);
+  --btn-border-color: var(--color-disabled-bg);
+  cursor: not-allowed;
+}
+
+/* Grey/700 label on an unfilled ground, per the design sheet. */
+.btn--secondary:disabled,
+.btn--ghost:disabled {
+  --btn-bg: transparent;
+  --btn-fg: var(--color-disabled-fg);
+}
+
+/*
+ * aria-disabled is only used for `loading`, which is busy rather than
+ * unavailable -- it keeps its variant colours (so the spinner inherits the
+ * right currentColor) and only loses its interactive affordance.
+ */
+.btn[aria-disabled='true'] {
+  cursor: progress;
+}
+
+/* --- modifiers ---------------------------------------------------------- */
+
+.btn--full-width {
+  display: flex;
+  inline-size: 100%;
+}
+
+.btn--icon-only {
+  padding-inline: 0;
+  inline-size: var(--btn-height);
+}
+
+/* --- slots -------------------------------------------------------------- */
+
+.btn__content {
+  display: contents;
+}
+
+.btn__icon {
+  display: inline-flex;
+  flex: none;
+  inline-size: var(--btn-icon-size);
+  block-size: var(--btn-icon-size);
+}
+
+.btn__icon > svg {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+/* --- loading ------------------------------------------------------------ */
+/*
+ * Per the design sheet, a loading button collapses to a circle showing only
+ * the spinner. Note this does change the control's width -- see the note in
+ * Button.tsx.
+ */
+
+.btn--loading {
+  padding-inline: 0;
+  inline-size: var(--btn-height);
+}
+
+.btn--loading .btn__content {
+  display: none;
+}
+
+.btn__spinner {
+  /* border-box so the 2px stroke stays inside --btn-icon-size and the button
+     keeps its 37 / 45px height while loading */
+  box-sizing: border-box;
+  inline-size: var(--btn-icon-size);
+  block-size: var(--btn-icon-size);
+  /* currentColor inherits --btn-fg, so contrast is correct on every variant */
+  border: 2px solid currentColor;
+  border-block-start-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 700ms linear infinite;
+}
+
+@keyframes btn-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn {
+    transition: none;
+  }
+
+  /* Slowed and stepped rather than stopped -- a halted spinner would lose
+     the "still working" signal entirely. */
+  .btn__spinner {
+    animation-duration: 1600ms;
+    animation-timing-function: steps(8, end);
+  }
+}
